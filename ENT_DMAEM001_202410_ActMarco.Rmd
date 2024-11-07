@@ -1,0 +1,1585 @@
+---
+title: "Evaluación Nacional Transversal (ENT): Probabilidad para Ingeniería"
+author: "Almeira Sampson, Marco Cedeño, César Sandoval"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+    mathjax: "default"
+---
+<footer>
+<p> Copyright &copy; 2023 Universidad San Sebastián, USS All rights reserved.</p>
+</footer>
+```{r setup, include=FALSE}
+pacman::p_load(echarts4r,dplyr,readxl,tidyverse,ggstatsplot,plotly,RColorBrewer,knitr,rmarkdown,jpeg,png,pandoc,tidyverse,PMCMRplus,kableExtra,kableExtra,formattable,tidyverse,rstatix,purrr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<!-- En el informe, en los lugares que tengan el siguiente punteado se deben modificar, el resto está automatizado  -->
+<!-- *********************************************************************** -->
+
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!-------------------------- INICIO: LECTURA BD ------------------------------->
+
+```{r, echo=FALSE}
+#%%%%%%%% LECTURA de base de datos y armado de df's %%%%%%%%
+
+# <!-- *********************************************************************** -->
+
+df <- read_excel("ENT_DMAEM001_202410.xlsx")
+dfp = data.frame(df $ SEDE, df $ CONDICIONAL)
+df2 <- df[df$CONDICIONAL =="V",]
+densidad_nacional <- df2
+
+# Función para calcular la tabla de resumen en función del filtro sin importar cantidad de preguntas
+
+resumen<- function(data, Filtro) {
+  
+  columnas_preguntas <- grep("^P\\d+", names(df2), value = TRUE)
+  
+  data %>%
+    group_by({{Filtro}}) %>%
+    summarise(across(all_of(columnas_preguntas), ~ round(mean(.), digits = 2)),
+              Puntaje = round(mean(`PUNTAJE TOTAL`), digits = 2),
+              Nota = round(mean(NOTA), digits = 1))
+}
+
+# Tabla de resumen por sede y docente
+
+df2p<-resumen(df2, SEDE)
+df2d<-resumen(df2, DOCENTE)
+df2car<-resumen(df2, Carrera)
+
+# Cantidad de Docentes
+
+NumDocentes <- length(unique(df2$DOCENTE))
+NumCar <- length(unique(df2$Carrera))
+
+```
+<!-------------------------- FIN: LECTURA BD ---------------------------------->
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+<!---------------------------- INICIO: DATOS de la ENT ----------------------->
+```{r,echo=FALSE}
+
+# <!-- *********************************************************************** -->
+
+Asignatura = "Introducción al Cálculo"
+Unidad = "NAN"
+Objetivo_unidad = "Aplica la axiomática de los números reales como cuerpo ordenado y completo para la resolución de problemas contextualizados que involucren inecuaciones, demostrando una actitud honesta y responsable. (60%). Utiliza funciones reales y sus propiedades para la resolución de problemas contextualizados y prácticos de ingeniería, demostrando capacidad reflexiva. (40%)"
+Pregunta_1 = "Dominio y recorrido de funciones"
+Pregunta_2 ="Resolución de inecuaciones lineales, cuadráticas y racionales"
+Pregunta_3 = "Uso de axiomas y propiedades de los números reales."
+Pregunta_4 = "NAN"
+```
+<!---------------------------- INICIO: DATOS de la ENT ----------------------->
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!-------------------------- INICIO: GRÁFICOS --------------------------------->
+<!-- Gráfica de ASISTENCIA: graf_asistencia$grafico; df_ordenado_asistencia$SEDE[1] -->
+```{r,echo=FALSE, captio}
+# Guarda todo en una variable llamada 'gráfico'
+graf_asistencia <- {
+  #analizamos la participación de los estudiantes por sede
+  participacion <-dfp %>%
+    group_by(df.SEDE,df.CONDICIONAL)%>%
+    summarise(total_count = n(),.groups = 'drop')%>%
+    spread(df.CONDICIONAL, total_count)%>%
+    ungroup() %>%
+    transmute(SEDE = df.SEDE,
+              Asistencia = replace_na(V, 0),
+              Inasistencia = replace_na(F, 0),
+              Total = Asistencia + Inasistencia,
+              porcentaje_asistencia = round(Asistencia/Total*100, digits = 0))
+  
+  
+  # Crea el gráfico
+  grafico_participacion <- participacion %>%
+    e_chart(x = SEDE) %>%
+    e_bar(serie = `Asistencia`)  %>%
+    e_bar(serie = `Inasistencia`)  %>%
+    e_line(porcentaje_asistencia) %>%
+    e_labels(~porcentaje_asistencia) %>% # Coloca la etiqueta arriba
+    e_legend(right = 0) %>% # move legend to the bottom
+    e_title("Participación estudiantes")%>%
+    e_axis_labels(x = "Sede",y ="N° Estudiantes") %>% # axis labels
+    e_tooltip()
+  
+  # Ordenar el dataframe por la columna Asistencia de mayor a menor
+  df_ordenado_asistencia <- participacion %>%
+    arrange(desc(Asistencia))
+  
+  # Devuelve el gráfico y el dataframe ordenado como una lista
+  list(grafico = grafico_participacion, df_ordenado = df_ordenado_asistencia)
+}
+
+# Ahora puedes acceder al gráfico
+# graf_asistencia$grafico # Llama el gráfico de participación
+
+# NOTA: Para llamar en el texto escribir
+# df_ordenado_asistencia$SEDE[1] # La sede MAYOR asistencia
+```
+
+<!-- Gráfico de TORTA: grafico_pie$grafico; grafico_pie$df_ordenado$SEDE[1];
+grafico_pie$df_ordenado$Total[1]; grafico_pie$df_ordenado$Porcentaje[1] -->
+```{r,echo=FALSE}
+# Guarda todo en una variable llamada 'grafico_pie'
+grafico_pie <- {
+  # Calcula el total de asistencia
+  total_asistencia <- sum(participacion$Asistencia)
+
+  # Crea un nuevo dataframe con los totales y porcentajes por sede
+  participacion_por_sede <- participacion %>%
+    group_by(SEDE) %>%
+    summarise(Total = sum(Asistencia),
+              Porcentaje = round((Total / total_asistencia) * 100, 2)) %>%
+    arrange(SEDE)
+
+  # Crea el gráfico de pastel
+  grafico_pie <- participacion %>%
+    e_chart(x = SEDE) %>%
+    e_pie(Asistencia) %>%
+    e_title("Representación de cada sede") %>%
+    e_labels(show = TRUE,
+             formatter = "{c} \n {d}%",
+             position = "inside") %>%
+    e_legend(right = 0, 
+             orient = "vertical") %>%
+    e_tooltip()
+
+  # Ordenar el dataframe por la columna Total de mayor a menor
+  df_ordenado_total <- participacion_por_sede %>%
+    arrange(desc(Total))
+
+  # Devuelve el gráfico y el dataframe ordenado como una lista
+  list(grafico = grafico_pie, df_ordenado = df_ordenado_total)
+}
+
+# Ahora puedes acceder al gráfico y al dataframe ordenado con:
+# grafico_pie$grafico
+# grafico_pie$df_ordenado$SEDE[1]
+# grafico_pie$df_ordenado$Total[1]
+# grafico_pie$df_ordenado$Porcentaje[1]
+```
+
+<!-- ##################### Análisis de densidades ################################## -->
+
+<!-- Gráfico de DENSIDAD NACIONAL: graf_densidad_nacional_total -->
+```{r, echo=FALSE}
+graf_densidad_nacional_total <- df2 %>%
+  e_charts() %>%
+  e_histogram(NOTA, name = "histogram") %>%
+  e_density(NOTA, areaStyle = list(opacity = .4), smooth = TRUE, name = "density", y_index = 1) %>%
+  e_axis_labels(x = " Nota",y="N° Estudiantes") %>% # axis labels
+  e_tooltip(formatter = e_tooltip_pointer_formatter("currency"),axisPointer = list(type = "cross"))
+
+# Llama el gráfico de densidad nacional con 'densidad_nacional'
+# graf_densidad_nacional_total
+```
+
+<!-- Gráfico de DENSIDAD POR SEDE: graf_densidad_nacional_SEDE -->
+```{r,echo=FALSE}
+graf_densidad_nacional_SEDE <- df2 %>%
+  group_by(SEDE) %>%
+  e_charts(x = `NOTA`) %>%
+  e_density(serie=`NOTA`,y_index = 1) %>%
+  e_title("Densidad de notas por sede") %>%
+  e_axis_labels(x = " Nota",y="% Estudiantes") %>% # axis labels
+  e_legend(bottom=10) %>%
+  e_tooltip(trigger = c("axis"),e_tooltip_pointer_formatter(
+  style = c("percent"),
+  digits = 1,
+  locale = NULL))
+
+# Llama el gráfico más adelante de densidad 
+# graf_densidad_nacional_SEDE
+```
+
+
+<!-- Gráfico de DENSIDAD POR CARRERA: graf_densidad_nacional_Carrera -->
+```{r,echo=FALSE}
+graf_densidad_nacional_Carrera <- df2 %>%
+  group_by(Carrera) %>%
+  e_charts(x = `NOTA`) %>%
+  e_density(serie=`NOTA`,y_index = 1) %>%
+  e_title("Densidad de notas por Carrera") %>%
+  e_axis_labels(x = " Nota",y="% Estudiantes") %>% # axis labels
+  e_legend(bottom=10) %>%
+  e_tooltip(trigger = c("axis"),e_tooltip_pointer_formatter(
+  style = c("percent"),
+  digits = 1,
+  locale = NULL))
+
+# Llama el gráfico más adelante de densidad 
+# graf_densidad_nacional_Carrera
+```
+
+<!-- A partir de acá se realiza un análisis por Carrera y agrupa por Sede-->
+
+<!-- Gráfico de DENSIDAD y Promedios POR Carrera y Sede-->
+```{r,echo=FALSE}
+# Cargar librerías necesarias
+if (!require(dplyr)) install.packages("dplyr", dependencies=TRUE)
+if (!require(echarts4r)) install.packages("echarts4r", dependencies=TRUE)
+library(dplyr)
+library(echarts4r)
+
+# Supongamos que df2 es tu dataframe original y df2car es un dataframe que contiene información de carreras únicas
+# Creo una lista para guardar los gráficos
+graficos_Prom <- list()
+graficos_Den <- list()
+
+carreras_unicas <- unique(df2car$Carrera)  # Asegúrate de obtener solo las carreras únicas
+
+# Lazo para crear un gráfico por cada carrera
+for (carrera in carreras_unicas) {
+  # Filtrar los datos para la carrera específica
+  df_carrera <- df2 %>%
+    filter(Carrera == carrera)
+  
+  # Crear el gráfico de densidad para las diferentes sedes
+  grafico_Den <- df_carrera %>%
+    group_by(SEDE) %>%
+    e_charts(x = NOTA) %>%
+    e_density(serie = NOTA, y_index = 1) %>%
+    e_title(paste("Densidad de notas por Sede para la carrera de", carrera)) %>%
+    e_axis_labels(x = "Nota", y = "% Estudiantes") %>%
+    e_legend(bottom = 10) %>%
+    e_tooltip(trigger = "axis", formatter = e_tooltip_pointer_formatter(
+      style = "percent",
+      digits = 2,
+      locale = NULL
+    ))
+  
+  # Calcular el promedio de las notas por sede
+  df_promedios <- df_carrera %>%
+    group_by(SEDE) %>%
+    summarise(PromedioNotas = mean(NOTA, na.rm = TRUE))
+
+  # Verificar los datos calculados
+  print(paste("Datos de promedios para la carrera:", carrera))
+  print(df_promedios)
+  
+  # Crear el gráfico de barras para las diferentes sedes, incluso si hay solo una SEDE
+  grafico_Prom <- df_promedios %>%
+    e_charts(SEDE) %>%
+    e_bar(PromedioNotas) %>%
+    e_title(paste("Promedio de Notas por Sede para la carrera de", carrera)) %>%
+    e_x_axis(type = "category") %>%
+    e_y_axis(name = "Promedio de Notas") %>%
+    e_tooltip(trigger = "axis") %>%
+    e_legend(show = FALSE)  # Ocultar la leyenda si solo es una serie
+  
+  # Guardar el gráfico en la lista con el nombre de la carrera
+  graficos_Den[[carrera]] <- grafico_Den
+  graficos_Prom[[carrera]] <- grafico_Prom
+}
+
+# Ejemplo para mostrar un gráfico específico:
+# e_render(graficos_Prom[["nombre de carrera"]])
+
+
+# Llama el gráfico más adelante de densidad 
+# graficos[["nombre de carrera"]]
+```
+
+
+
+<!-- Gráfico de PROMEDIO NACIONAL: graf_prom_nacional -->
+```{r, echo=FALSE}
+graf_prom_nacional <- df2p %>%
+  arrange(desc(serie = Nota)) %>%
+  e_chart(x=SEDE) %>%
+  e_bar(serie = Nota) %>%
+  e_title("Promedio de nota por Sede") %>%
+  e_axis_labels(x = "Sede",y="Promedio") %>% # axis labels
+  e_legend(FALSE) %>%
+  e_tooltip()
+
+  df_prom_nacional_ordenados <- df2p %>%
+    arrange(desc(serie = Nota))
+
+# Llama el gráfico del promedio nacional
+# graf_prom_nacional
+# NOTA: df_prom_nacional_ordenados$SEDE[1] Me da la sede con el promedio más alto, y df_prom_nacional_ordenados$Nota[1] me da la nota de la sede
+```
+
+<!-- Gráfico de PROMEDIOS POR carrera y Sede : prom_Car -->
+```{r,echo=FALSE,warning=FALSE}
+
+# Crea el gráfico y lo guarda en la variable 'graf_prom_DOCENTE'
+graf_prom_DOCENTE <- df2d
+# Define los colores
+my_colors <- brewer.pal(NumDocentes, name="YlGnBu") #"GnBu" YlGnBu
+
+# Añade los colores al dataframe
+df2d$color <- my_colors[1:NumDocentes]
+
+# Crea el gráfico y lo guarda en la variable 'graf_prom_DOCENTE'
+graf_prom_DOCENTE <- df2d %>%
+  arrange(serie = Nota) %>%
+  e_charts(x = DOCENTE) %>%
+  e_bar(serie = Nota) %>%
+  e_legend(FALSE) %>%
+  e_title("Promedio de notas por profesor") %>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 49, fontSize = 8)) %>%
+  e_axis_labels(x = "Profesor",y = "Promedio") %>% # axis labels
+  e_flip_coords() %>%  # flip axis
+  e_tooltip() %>%
+  e_arrange(rows = 1,cols = 1)
+
+df_prom_DOCENTE_ordenados <- df2d %>%
+  arrange(desc(Nota))
+
+# Ahora puedes llamar a 'graf_prom_DOCENTE' para mostrar el gráfico
+# graf_prom_DOCENTE
+
+# NOTA: df_prom_DOCENTE_ordenados$DOCENTE[1] te dará el docente con el promedio más alto, y df_prom_DOCENTE_ordenados$Nota[1] te dará la nota del docente
+```
+
+<!-- Gráfica de PUNTAJES POR SEDE: graf_puntaje_SEDE -->
+```{r,echo=FALSE}
+# <!-- *********************************************************************** -->
+# cuidado acá depende de la cantidad de preguntas
+
+# Guarda todo en una variable llamada 'grafico_puntaje_SEDE'
+grafico_puntaje_SEDE <- {
+  # Crea un nuevo dataframe con los puntajes por sede y pregunta
+  puntajes_por_sede <- df2p %>%
+    group_by(SEDE) %>%
+    summarise(P1 = mean(P1),
+              P2 = mean(P2),
+              P3 = mean(P3),
+              P4 = mean(P4)) %>%
+    arrange(SEDE)
+
+  # Crea el gráfico de barras
+  grafico_puntaje_SEDE <- df2p %>%
+    e_charts(x = SEDE) %>%
+    e_bar(serie = P1) %>%
+    e_bar(serie = P2) %>%
+    e_bar(serie = P3) %>%
+    e_bar(serie = P4) %>%
+    e_tooltip()
+
+  # Devuelve el gráfico y el dataframe como una lista
+  list(grafico = grafico_puntaje_SEDE, df = puntajes_por_sede)
+}
+
+# Ahora puedes acceder al gráfico y al dataframe con:
+# grafico_puntaje_SEDE$grafico
+# grafico_puntaje_SEDE$df
+```
+
+<!-- Gráfica de PUNTAJE POR Carrera: graf_puntajes_preguntas_DOCENTE -->
+```{r, echo=FALSE,warning=FALSE}
+# <!-- *********************************************************************** -->
+# cuidado acá depende de la cantidad de preguntas cada di
+
+graf_puntajes_preguntas_Car <- {df2car
+my_colors <- brewer.pal(NumCar, "GnBu")
+df2car$color <- my_colors[1:NumCar]
+
+d1 <-df2car %>%
+  arrange(desc(serie = P1))%>%
+  e_charts(x = Carrera) %>%
+  e_bar(serie = P1)%>%
+  e_legend(FALSE)%>%
+  e_axis_labels(x = "Carrera",y = "Puntaje") %>% # axis labels
+  e_title(Pregunta_1, left = "center")%>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 45, fontSize = 8))%>%
+  e_dims(height = "auto", width = "auto")%>%
+  e_tooltip()
+
+d2 <-df2car %>%
+  arrange(desc(serie = P2))%>%
+  e_charts(x = Carrera) %>%
+  e_bar(serie = P2)%>%
+  e_legend(FALSE)%>%
+  e_axis_labels(x = "Carrera",y = "Puntaje") %>% # axis labels
+  e_title(Pregunta_2, left = "center")%>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 45, fontSize = 8))%>%
+  e_dims(height = "auto", width = "auto")%>%
+  e_tooltip()
+
+d3 <-df2car %>%
+  arrange(desc(serie = P3))%>%
+  e_charts(x = Carrera) %>%
+  e_bar(serie = P3)%>%
+  e_legend(FALSE)%>%
+  e_axis_labels(x = "Carrera",y = "Puntaje") %>% # axis labels
+  e_title(Pregunta_3, left = "center")%>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 45, fontSize = 8))%>%
+  #e_dims(height = 500, width = 500)%>%
+  e_tooltip()
+
+d4 <-df2car %>%
+  arrange(desc(serie = P4))%>%
+  e_charts(x = Carrera) %>%
+  e_bar(serie = P4)%>%
+  e_legend(FALSE)%>%
+  e_axis_labels(x = "Prof",y = "Puntaje") %>% # axis labels
+  e_title(Pregunta_4, left = "center")%>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 45, fontSize = 8))%>%
+  #e_dims(height = 500, width = 500)%>%
+  e_tooltip()
+
+
+d5 <-df2car %>%
+  arrange(desc(serie = Puntaje))%>%
+  e_charts(x = Carrera) %>%
+  e_bar(serie = Puntaje)%>%
+  e_legend(FALSE)%>%
+  e_axis_labels(x = "Carrera",y = "Puntaje") %>% # axis labels
+  e_title("Puntaje Total", left = "center")%>%
+  e_add_nested("itemStyle", color) %>%
+  e_x_axis(axisLabel = list(rotate = 45, fontSize = 8))%>%
+  #e_dims(height = 60, width = 60)%>%
+  e_tooltip()
+# <!-- *********************************************************************** -->
+# en la línea siguiente cuidado con la cantidad de preguntas y sus gráficos
+
+  e_arrange(d1,d2,d3,d4,d5,rows = 5,cols = 1)} # 
+
+# Llama las gráficas de puntajes por preguntas
+# graf_puntajes_preguntas_DOCENTE
+
+#-------------- SACA LAS CONCLUSIONES POR PREGUNTA -------------------
+
+# Crea una lista para almacenar los puntajes promedio por pregunta
+puntajes_promedio_lista <- list()
+nombres_profesores_lista <- list()
+
+# Para cada pregunta en el conjunto de datos
+# <!-- *********************************************************************** -->
+# Cantidad de preguntas
+
+for (pregunta in c("P1", "P2", "P3","P4", "Puntaje")) {
+  # Calcula el puntaje promedio por profesor para la pregunta actual
+  puntajes_promedio <- df2d %>%
+    group_by(DOCENTE) %>%
+    summarise(puntaje_promedio = mean(.data[[pregunta]], na.rm = TRUE)) %>%
+    arrange(desc(puntaje_promedio))
+  
+  # Almacena los puntajes promedio en la lista de puntajes
+  puntajes_promedio_lista[[pregunta]] <- round(puntajes_promedio$puntaje_promedio,1)
+  
+  # Almacena los nombres de los profesores en la lista de nombres de profesores
+  nombres_profesores_lista[[pregunta]] <- puntajes_promedio$DOCENTE
+}
+
+```
+
+<!-- Gráfica de BOX-PLOT POR SEDE: ggplotly(box_SEDE)-->
+```{r,echo=FALSE}
+box_SEDE <- ggplot(data = df2, aes(x = SEDE, y = NOTA, color = SEDE)) +
+  geom_boxplot()+
+  geom_jitter(aes(color=SEDE))+
+  geom_text(data = df2p, aes(x = SEDE, y = Nota, label = Nota), size = 3, vjust = -1.5)+
+  theme_bw()+
+  labs(
+    title = "Distribución de Notas por Sede",
+    x = "Sede",
+    y = "Nota",
+    colour = "Sede"
+  )
+
+# Grafica el box-plot de las sedes
+# ggplotly(box_SEDE)
+
+# ----------------------------------------------------------------
+quartiles_por_SEDE <- df2 %>%
+  group_by(SEDE) %>%
+  summarise(Q1 = round(quantile(NOTA, 0.25, na.rm = TRUE), 1),
+            Q3 = round(quantile(NOTA, 0.75, na.rm = TRUE), 1))
+
+```
+
+<!-- Gráfica de BOX-PLOT por DOCENTE: ggplotly(box_DOCENTE) -->
+```{r,echo=FALSE}
+box_DOCENTE <- ggplot(data = df2, aes(x = DOCENTE, y = NOTA, color= DOCENTE)) +
+  geom_boxplot()+
+  geom_jitter(aes(color = DOCENTE))+
+  geom_text(data = df2d, aes(x = DOCENTE, y = Nota, label = Nota), size=3, vjust = -1.5)+
+  theme_bw()+
+  labs(
+    title = "Distribución de Notas por Profesor",
+    x = "Profesor",
+    y = "Nota",
+    colour = "DOCENTE"
+  )+
+  theme(axis.text = element_text(angle = 45))
+
+# Grafica el box-plot de los profesores
+# ggplotly(box_DOCENTE)
+
+# --------------------------------------------------------------------
+quartiles_por_DOCENTE <- df2 %>%
+  group_by(DOCENTE) %>%
+  summarise(Q1 = round(quantile(NOTA, 0.25, na.rm = TRUE), 1),
+            Q3 = round(quantile(NOTA, 0.75, na.rm = TRUE), 1))
+```
+
+<!-- Gráfica de VIOLÍN test TUKEY: grafico_test_tukey_SEDE -->
+```{r,echo=FALSE}
+# Guarda el gráfico en la variable 'grafico_ggbetweenstats'
+grafico_test_tukey_SEDE <- ggbetweenstats(
+  data = df2,
+  x = SEDE,
+  y = NOTA,
+  type = "parametric",
+  pairwise.comparisons = TRUE,
+  pairwise.annotation = "p.adjust.method",
+  p.adjust.method = "bonferroni",
+  messages = FALSE
+)
+
+# Ahora puedes llamar a 'grafico_ggbetweenstats' para mostrar el gráfico
+# grafico_test_tukey_SEDE
+```
+
+<!-- Gráfica de VIOLÍN test TUKEY: grafico_test_tukey_DOCENTE -->
+```{r,echo=FALSE}
+# Guarda el gráfico en la variable 'grafico_ggbetweenstats'
+grafico_test_tukey_DOCENTE <- ggbetweenstats(
+  data = df2,
+  x = DOCENTE,
+  y = NOTA,
+  type = "parametric",
+  pairwise.comparisons = TRUE,
+  pairwise.annotation = "p.adjust.method",
+  p.adjust.method = "bonferroni",
+  messages = FALSE
+)
+
+# Ahora puedes llamar a 'grafico_ggbetweenstats' para mostrar el gráfico
+# grafico_test_tukey_DOCENTE
+```
+<!-------------------------- FIN: GRÁFICOS ------------------------------------>
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!------------------------- INICIO: TABLAS ------------------------------------>
+<!-- Llama la tabla resumen de promedio y varianza por SEDE: Tabla_resumen_SEDE -->
+```{r, echo=FALSE, results='asis'}
+Tabla_resumen_SEDE <- df2 %>%
+  group_by(SEDE) %>%
+  summarise(
+    Promedio_NOTA = round(mean(NOTA, na.rm = TRUE),1),
+    SD_NOTA = round(sd(NOTA, na.rm = TRUE),1)
+  ) %>%
+  rename(
+    "Promedio" = Promedio_NOTA,
+    "Desviación estándar" = SD_NOTA
+  ) %>%
+  kable(align = c("l", "c", "c")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Llama la tabla resumen de la sede
+# Tabla_resumen_SEDE
+```
+
+<!-- Llama la tabla resumen de promedio y varianza por DOCENTE: Tabla_resumen_DOCENTE -->
+```{r, echo=FALSE,results='asis'}
+Tabla_resumen_DOCENTE <- df2 %>%
+  group_by(DOCENTE) %>%
+  summarise(
+    Promedio_NOTA = round(mean(NOTA, na.rm = TRUE),1),
+    SD_NOTA = round(sd(NOTA, na.rm = TRUE),1)
+  ) %>%
+  rename(
+    "Promedio" = Promedio_NOTA,
+    "Desviación estándar" = SD_NOTA
+  ) %>%
+  kable(align = c("l", "c", "c")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Llama la tabla resumen de los profes
+# Tabla_resumen_DOCENTE
+```
+<!--------------------------- FIN: TABLAS ------------------------------------->
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!---------------------------- INICIO: TEST SEDE ------------------------------>
+<!-- Resultado TABLA TEST SHAPIRO-WILK SEDE: tabla_shapiro_SEDE -->
+```{r,echo=FALSE,results='asis'}
+# Realiza la prueba de Shapiro-Wilk por grupos y guarda el resultado en 'resultado_shapiro'
+resultado_shapiro_SEDE <- df2 %>%
+  group_by(SEDE) %>%
+  summarise(
+    Variable = "NOTA",
+    Estadístico = round(shapiro.test(NOTA)$statistic,5),
+    p_valor = round(shapiro.test(NOTA)$p.value,5)
+  )
+
+# Crea la tabla y la guarda en 'tabla_shapiro_SEDE'
+tabla_shapiro_SEDE <- resultado_shapiro_SEDE %>%
+  select(SEDE, Variable, Estadístico, p_valor) %>%
+  kable(align = c("l","c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_shapiro_SEDE$p_valor > 0.05), background = "green", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_shapiro_SEDE' para mostrar la tabla
+# tabla_shapiro_SEDE
+```
+
+<!-- CONCLUSIONES NORMALIDAD SEDE: conclusion_normalidad_SEDE$PAP -->
+```{r, echo=FALSE}
+# Convierte el resultado en un dataframe
+df_resultado_shapiro_SEDE_df <- as.data.frame(resultado_shapiro_SEDE)
+
+# Inicializa una lista vacía para almacenar los resultados
+conclusion_normalidad_SEDE <- list()
+
+for (i in 1:nrow(df_resultado_shapiro_SEDE_df)) {
+  p = df_resultado_shapiro_SEDE_df$p_valor[i]
+  sede = df_resultado_shapiro_SEDE_df$SEDE[i]
+  if (p > 0.05) {
+    # Guarda el mensaje en la lista de resultados
+    conclusion_normalidad_SEDE[[sede]] <- paste("Para la sede", sede, ": La variable nota seguiría una distribución normal")
+  } else {
+    # También puedes guardar un mensaje para cuando p <= 0.05, si lo deseas
+    conclusion_normalidad_SEDE[[sede]] <- paste("Para la sede", sede, ": La variable nota no seguiría una distribución normal")
+  }
+}
+
+# Ahora puedes acceder a los resultados utilizando los nombres de las sedes
+# conclusion_normalidad_SEDE$PAP
+# etc.
+```
+
+<!-- TABLA RESULTADO TEST BARTLETT SEDE: tabla_bartlett -->
+```{r, echo=FALSE}
+# Realiza el test de Bartlett
+bartlett_SEDE <- bartlett.test(NOTA ~ SEDE, data = df2)
+
+# Crea un dataframe con el resultado
+resultado_bartlett_SEDE <- data.frame(
+  Test = "Bartlett",
+  Estadístico = round(bartlett_SEDE$statistic, 5),
+  p_valor = round(bartlett_SEDE$p.value, 5)
+)
+
+# Crea la tabla y la guarda en 'tabla_bartlett'
+tabla_bartlett_SEDE <- resultado_bartlett_SEDE %>%
+  kable(align = c("l","c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_bartlett_SEDE$p_valor > 0.05), background = "green", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_bartlett' para mostrar la tabla
+# tabla_bartlett_SEDE
+```
+
+<!-- CONCLUSIÓN de HETEROCEDASTICIDAD DE VARIANZAS SEDE: conclusion_bartlett_SEDE-->
+```{r, echo=FALSE}
+p_value_bartlett_SEDE <- resultado_bartlett_SEDE$p_valor
+
+# Guarda el mensaje en la variable 'mensaje_bartlett_sede'
+if (p_value_bartlett_SEDE < 0.05) {
+  conclusion_bartlett_SEDE <- "Las varianzas entre las sedes son estadísticamente diferentes."
+} else {
+  conclusion_bartlett_SEDE <- "Las varianzas entre las sedes son estadísticamente parecidas."
+}
+
+# Ahora puedes llamar a 'mensaje_bartlett_sede' para mostrar el mensaje
+# conclusion_bartlett_SEDE
+```
+
+<!-- TABLA RESULTADO TEST Kruskal-Wallis SEDE: tabla_kruskal_SEDE -->
+```{r, echo=FALSE}
+# Hace el test de  Kruskal-Wallis
+kruskal_SEDE <- kruskal.test(NOTA ~ SEDE, data = df2)
+
+# Crea un data frame del test
+resultado_kruskal_SEDE <- data.frame(
+  Test = "Kruskal-Wallis",
+  Estadístico = round(kruskal_SEDE$statistic, 5),
+  p_valor = round(kruskal_SEDE$p.value, 5)
+)
+
+# Crea la tabla del test para dar formato
+tabla_kruskal_SEDE <- resultado_kruskal_SEDE %>%
+  kable(align = c("l","c", "c"), escape = FALSE) %>% # Add escape = FALSE to allow HTML
+  row_spec(which(resultado_kruskal_SEDE$p_valor < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Se puede llamar la tabla formateada
+# tabla_kruskal_SEDE
+```
+
+<!-- CONCLUSIÓN Kruskal-Wallis SEDE: conclusion_Kruskal_SEDE-->
+```{r, echo=FALSE}
+p_value_kruskal_SEDE <- resultado_kruskal_SEDE$p_valor
+
+# Guarda el mesaje de la variable 'p_value_kruskal_SEDE'
+if (p_value_kruskal_SEDE < 0.05){
+  conclusion_Kruskal_SEDE <- "El rendimiento entre las sedes es difernte"
+} else {
+  conclusion_Kruskal_SEDE <- "El rendimiento entre las sedes se parece"
+}
+# conclusion_Kruskal_SEDE
+```
+
+<!-- TABLA RESULTADO TEST Wilcoxon-Mann-Whitney SEDE: tabla_resultados_test_Wilcox_SEDE -->
+```{r, echo=FALSE}
+resultados_test_Wilcox_SEDE <- suppressWarnings(pairwise.wilcox.test(df2$NOTA, df2$SEDE, p.adjust.method = "bonferroni"))
+
+# Convertimos la matriz de valores p en un dataframe
+df_resultados_test_Wilcox_SEDE <- round(as.data.frame(resultados_test_Wilcox_SEDE$p.value),7)
+
+# Convertimos todas las columnas a caracteres
+df_resultados_test_Wilcox_SEDE[] <- lapply(df_resultados_test_Wilcox_SEDE, as.character)
+
+# Reemplazamos NA con "-"
+df_resultados_test_Wilcox_SEDE[is.na(df_resultados_test_Wilcox_SEDE)] <- "--"
+
+# Aplica el formato a todas las celdas con p_valor < 0.05
+df_resultados_test_Wilcox_SEDE <- df_resultados_test_Wilcox_SEDE %>%
+  mutate(across(everything(), ~ ifelse(. < 0.05 & . != "--", cell_spec(., "html", bold = T, color = "white", background = "#D7261E"), .)))
+
+
+tabla_resultados_test_Wilcox_SEDE <- df_resultados_test_Wilcox_SEDE %>%
+  kable("html", escape = F) %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = TRUE,font_size = 13)
+
+# tabla_resultados_test_Wilcox_SEDE
+```
+
+<!-- CONCLUSIÓN  Wilcoxon-Mann-Whitney SEDE: conclusion_Wilcox_test_SEDE-->
+```{r, echo=FALSE}
+# Realiza el test de Wilcoxon
+resultados_test_Wilcox_SEDE <- suppressWarnings(pairwise.wilcox.test(df2$NOTA, df2$SEDE, p.adjust.method = "bonferroni"))
+
+# Extrae la matriz de p-valores
+pval_matrix <- resultados_test_Wilcox_SEDE$p.value
+
+# Encuentra los pares con p-valor < 0.005
+significant_pairs <- which(pval_matrix < 0.05, arr.ind = TRUE)
+
+# Crea una lista para almacenar los pares
+significant_pairs_list <- list()
+
+# Llena la lista con los nombres de las sedes
+for (i in seq_len(nrow(significant_pairs))) {
+  pair <- c(rownames(pval_matrix)[significant_pairs[i, "row"]], colnames(pval_matrix)[significant_pairs[i, "col"]])
+  pair_string <- paste(pair, collapse = " - ")
+  pair_string <- gsub("c\\(", "", pair_string)  # Elimina "c("
+  pair_string <- gsub("\\)", "", pair_string)  # Elimina ")"
+  significant_pairs_list[[i]] <- pair_string
+}
+
+# Verifica si la lista está vacía
+if(length(significant_pairs_list) == 0) {
+  conclusion_Wilcox_test_SEDE <- "No existen sedes con diferencias significativas"
+} else {
+  # Construye la conclusión con los pares significativos
+  conclusion_Wilcox_test_SEDE <- paste("Las sedes con diferencias significativas son:", paste(significant_pairs_list, collapse = " ; "))
+}
+
+# Imprime la conclusión
+# conclusion_Wilcox_test_SEDE
+```
+
+<!-- TABLA RESULTADO TEST ANOVA SEDE: tabla_ANOVA_SEDE -->
+```{r,echo=FALSE}
+# Realiza el test de ANOVA
+ANOVA_SEDE <- aov(NOTA ~ SEDE, data = df2)
+
+# Extrae el resumen de los resultados
+summary_ANOVA_SEDE <- summary(ANOVA_SEDE)
+
+# Crea un dataframe con el resultado
+resultado_ANOVA_SEDE <- data.frame(
+  Test = "ANOVA",
+  Df = summary_ANOVA_SEDE[[1]]$Df[1],
+  Sum_Sq = round(summary_ANOVA_SEDE[[1]]$`Sum Sq`[1], 5),
+  Mean_Sq = round(summary_ANOVA_SEDE[[1]]$`Mean Sq`[1], 5),
+  F_value = round(summary_ANOVA_SEDE[[1]]$`F value`[1], 5),
+  p_valor = round(summary_ANOVA_SEDE[[1]]$`Pr(>F)`[1], 5)
+)
+
+# Crea la tabla y la guarda en 'tabla_ANOVA_SEDE'
+tabla_ANOVA_SEDE <- resultado_ANOVA_SEDE %>%
+  kable(align = c("l","c", "c", "c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_ANOVA_SEDE$p_valor < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_ANOVA_SEDE' para mostrar la tabla
+# tabla_ANOVA_SEDE
+```
+
+<!-- CONCLUSIÓN RESULTADO TEST ANOVA SEDE: conclusion_ANOVA_SEDE -->
+```{r,echo=FALSE}
+# Guarda el valor p en una variable
+p_value_ANOVA_SEDE <- resultado_ANOVA_SEDE$p_valor
+
+# Guarda el mensaje en la variable 'conclusion_ANOVA_SEDE'
+if (p_value_ANOVA_SEDE < 0.05) {
+  conclusion_ANOVA_SEDE <- "Los rendimientos entre las sedes son diferentes."
+} else {
+  conclusion_ANOVA_SEDE <- "Los rendimientos entre las sedes son parecidos."
+}
+
+# Ahora puedes llamar a 'conclusion_ANOVA_SEDE' para mostrar el mensaje
+# conclusion_ANOVA_SEDE
+```
+
+<!-- TABLA RESULTADO TEST TUKEY SEDE: tabla_tukey_SEDE -->
+```{r,echo=FALSE}
+# Realizando ANOVA primero
+resultado_anova_SEDE <- aov(NOTA ~ SEDE, data = df2)
+
+# Realizando el test de Tukey
+resultado_tukey_SEDE <- TukeyHSD(resultado_anova_SEDE)
+
+# Convertir los resultados en un dataframe
+df_resultado_tukey_SEDE <- data.frame(resultado_tukey_SEDE$SEDE)
+
+# Convertir los nombres de las filas en una columna "Comparacion"
+df_resultado_tukey_SEDE <- df_resultado_tukey_SEDE %>% 
+  tibble::rownames_to_column("Comparación")
+
+# Redondear solo las columnas numéricas a 5 decimales
+num_cols <- sapply(df_resultado_tukey_SEDE, is.numeric)
+df_resultado_tukey_SEDE[num_cols] <- round(df_resultado_tukey_SEDE[num_cols], 5)
+
+# Crear la tabla
+tabla_tukey_SEDE <- df_resultado_tukey_SEDE %>%
+  kable(align = c("l","c", "c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(df_resultado_tukey_SEDE$p.adj < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_tukey_SEDE' para mostrar la tabla
+# tabla_tukey_SEDE
+```
+
+<!-- CONCLUSIÓN RESULTADO TEST TUKEY SEDE: conclusion_TUKEY_SEDE -->
+```{r,echo=FALSE}
+# Filtramos las filas donde el valor p ajustado es menor a 0.05
+pares_sedes_significativos_tukey_SEDE <- df_resultado_tukey_SEDE %>%
+  filter(p.adj < 0.05)
+
+# Verificamos si el dataframe está vacío
+if (nrow(pares_sedes_significativos_tukey_SEDE) == 0) {
+  conclusion_tukey_test_SEDE <- "No existen sedes con diferencias significativas en su rendimiento."
+} else {
+  pares_sedes_significativos <- paste(pares_sedes_significativos_tukey_SEDE$Comparación, collapse = " ; ")
+  conclusion_tukey_test_SEDE <- paste("Las sedes con diferencias significativas son:", pares_sedes_significativos)
+}
+
+# Ahora puedes llamar a 'conclusion_tukey_test_SEDE' para mostrar el resultado
+# conclusion_tukey_test_SEDE
+```
+<!------------------------------- FIN: TEST SEDE------------------------------->
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!--------------------------- INICIO: TEST DOCENTE --------------------------->
+<!-- Resultado TABLA TEST SHAPIRO-WILK DOCENTE: tabla_shapiro_DOCENTE-->
+```{r,echo=FALSE,results='asis'}
+# Realiza la prueba de Shapiro-Wilk por grupos y guarda el resultado en 'resultado_shapiro'
+resultado_shapiro_DOCENTE <- df2 %>%
+  group_by(DOCENTE) %>%
+  summarise(
+    Variable = "NOTA",
+    Estadístico = round(shapiro.test(NOTA)$statistic,5),
+    p_valor = round(shapiro.test(NOTA)$p.value,5)
+  )
+
+# Crea la tabla y la guarda en 'tabla_shapiro_SEDE'
+tabla_shapiro_DOCENTE <- resultado_shapiro_DOCENTE %>%
+  select(DOCENTE, Variable, Estadístico, p_valor) %>%
+  kable(align = c("l","c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_shapiro_DOCENTE$p_valor > 0.05), background = "green", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_shapiro_DOCENTE' para mostrar la tabla
+# tabla_shapiro_DOCENTE
+```
+
+<!-- CONCLUSIONES NORMALIDAD DOCENTE: conclusion_normalidad_DOCENTE$'ALEJANDRO ZAPATA' -->
+```{r, echo=FALSE}
+# Realiza la prueba de Shapiro-Wilk por grupos y guarda el resultado en 'resultado_shapiro'
+resultado_shapiro_DOCENTE <- df2 %>%
+  group_by(DOCENTE) %>%
+  summarise(
+    Variable = "NOTA",
+    Estadístico = round(shapiro.test(NOTA)$statistic,5),
+    p_valor = round(shapiro.test(NOTA)$p.value,5)
+  )
+
+# Convierte el resultado en un dataframe
+df_resultado_shapiro_DOCENTE_df <- as.data.frame(resultado_shapiro_DOCENTE)
+
+# Inicializa una lista vacía para almacenar los resultados
+conclusion_normalidad_DOCENTE <- list()
+
+for (i in 1:nrow(df_resultado_shapiro_DOCENTE_df)) {
+  p = df_resultado_shapiro_DOCENTE_df$p_valor[i]
+  docente = df_resultado_shapiro_DOCENTE_df$DOCENTE[i]
+  if (p > 0.05) {
+    # Guarda el mensaje en la lista de resultados
+    conclusion_normalidad_DOCENTE[[docente]] <- paste("Para el docente", docente, ": La variable nota seguiría una distribución normal")
+  } else {
+    # También puedes guardar un mensaje para cuando p <= 0.05, si lo deseas
+    conclusion_normalidad_DOCENTE[[docente]] <- paste("Para el docente", docente, ": La variable nota no seguiría una distribución normal")
+  }
+}
+
+# Ahora puedes acceder a los resultados utilizando los nombres de los docentes
+# conclusion_normalidad_DOCENTE$'Nombre del docente'
+# etc.
+# conclusion_normalidad_DOCENTE$'ALEJANDRO ZAPATA'
+```
+
+<!-- TABLA RESULTADO TEST BARTLETT DOCENTE: tabla_bartlett_DOCENTE -->
+```{r, echo=FALSE}
+# Realiza el test de Bartlett
+bartlett_DOCENTE <- bartlett.test(NOTA ~ DOCENTE, data = df2)
+
+# Crea un dataframe con el resultado
+resultado_bartlett_DOCENTE <- data.frame(
+  Test = "Bartlett",
+  Estadístico = round(bartlett_DOCENTE$statistic, 5),
+  p_valor = round(bartlett_DOCENTE$p.value, 5)
+)
+
+# Crea la tabla y la guarda en 'tabla_bartlett'
+tabla_bartlett_DOCENTE <- resultado_bartlett_DOCENTE %>%
+  kable(align = c("l","c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_bartlett_DOCENTE$p_valor > 0.05), background = "green", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_bartlett' para mostrar la tabla
+# tabla_bartlett_DOCENTE
+```
+
+<!-- CONCLUSIÓN de HETEROCEDASTICIDAD DE VARIANZAS DOCENTE: conclusion_bartlett_DOCENTE-->
+```{r, echo=FALSE}
+p_value_bartlett_DOCENTE <- resultado_bartlett_DOCENTE$p_valor
+
+# Guarda el mensaje en la variable 'mensaje_bartlett_sede'
+if (p_value_bartlett_DOCENTE < 0.05) {
+  conclusion_bartlett_DOCENTE <- "Las varianzas entre los docentes son estadísticamente diferentes."
+} else {
+  conclusion_bartlett_DOCENTE <- "Las varianzas entre los docentes son estadísticamente parecidas."
+}
+
+# Ahora puedes llamar a 'mensaje_bartlett_sede' para mostrar el mensaje
+# conclusion_bartlett_DOCENTE
+```
+
+<!-- TABLA RESULTADO TEST Kruskal-Wallis DOCENTE: tabla_kruskal_DOCENTE -->
+```{r, echo=FALSE}
+# Hace el test de  Kruskal-Wallis
+kruskal_DOCENTE <- kruskal.test(NOTA ~ DOCENTE, data = df2)
+
+# Crea un data frame del test
+resultado_kruskal_DOCENTE <- data.frame(
+  Test = "Kruskal-Wallis",
+  Estadístico = round(kruskal_DOCENTE$statistic, 5),
+  p_valor = round(kruskal_DOCENTE$p.value, 5)
+)
+
+# Crea la tabla del test para dar formato
+tabla_kruskal_DOCENTE <- resultado_kruskal_DOCENTE %>%
+  kable(align = c("l","c", "c"), escape = FALSE) %>% # Add escape = FALSE to allow HTML
+  row_spec(which(resultado_kruskal_DOCENTE$p_valor < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Se puede llamar la tabla formateada
+# tabla_kruskal_DOCENTE
+```
+
+<!-- CONCLUSIÓN Kruskal-Wallis DOCENTE: conclusion_Kruskal_DOCENTE-->
+```{r, echo=FALSE}
+p_value_kruskal_DOCENTE <- resultado_kruskal_DOCENTE$p_valor
+
+# Guarda el mensaje en la variable 'conclusion_Kruskal_DOCENTE'
+if (p_value_kruskal_DOCENTE < 0.05) {
+  conclusion_Kruskal_DOCENTE <- "El rendimiento entre los docentes es diferente."
+} else {
+  conclusion_Kruskal_DOCENTE <- "El rendimiento entre los docentes se parece."
+}
+# conclusion_Kruskal_DOCENTE
+```
+
+<!-- TABLA RESULTADO TEST Wilcoxon-Mann-Whitney DOCENTE: tabla_resultados_test_Wilcox_DOCENTE -->
+```{r, echo=FALSE}
+resultados_test_Wilcox_DOCENTE <- suppressWarnings(pairwise.wilcox.test(df2$NOTA, df2$DOCENTE, p.adjust.method = "bonferroni"))
+
+# Convertimos la matriz de valores p en un dataframe
+df_resultados_test_Wilcox_DOCENTE <- round(as.data.frame(resultados_test_Wilcox_DOCENTE$p.value),7)
+
+# Convertimos todas las columnas a caracteres
+df_resultados_test_Wilcox_DOCENTE[] <- lapply(df_resultados_test_Wilcox_DOCENTE, as.character)
+
+# Reemplazamos NA con "-"
+df_resultados_test_Wilcox_DOCENTE[is.na(df_resultados_test_Wilcox_DOCENTE)] <- "--"
+
+# Aplica el formato a todas las celdas con p_valor < 0.05
+df_resultados_test_Wilcox_DOCENTE <- df_resultados_test_Wilcox_DOCENTE %>%
+  mutate(across(everything(), ~ ifelse(. < 0.05 & . != "--", cell_spec(., "html", bold = T, color = "white", background = "#D7261E"), .)))
+
+
+tabla_resultados_test_Wilcox_DOCENTE <- df_resultados_test_Wilcox_DOCENTE %>%
+  kable("html", escape = F) %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = TRUE,font_size = 13)
+
+# tabla_resultados_test_Wilcox_DOCENTE
+```
+
+<!-- CONCLUSIÓN  Wilcoxon-Mann-Whitney DOCENTE: conclusion_Wilcox_test_DOCENTE-->
+```{r, echo=FALSE}
+# Realiza el test de Wilcoxon
+resultados_test_Wilcox_DOCENTE <- suppressWarnings(pairwise.wilcox.test(df2$NOTA, df2$DOCENTE, p.adjust.method = "bonferroni"))
+
+# Extrae la matriz de p-valores
+pval_matrix <- resultados_test_Wilcox_DOCENTE$p.value
+
+# Encuentra los pares con p-valor < 0.05
+significant_pairs <- which(pval_matrix < 0.05, arr.ind = TRUE)
+
+# Crea una lista para almacenar los pares
+significant_pairs_list <- list()
+
+# Llena la lista con los nombres de los docentes
+for (i in seq_len(nrow(significant_pairs))) {
+  pair <- c(rownames(pval_matrix)[significant_pairs[i, "row"]], colnames(pval_matrix)[significant_pairs[i, "col"]])
+  pair_string <- paste(pair, collapse = " - ")
+  significant_pairs_list[[i]] <- pair_string
+}
+
+# Verifica si la lista está vacía
+if (length(significant_pairs_list) == 0) {
+  conclusion_Wilcox_test_DOCENTE <- "No existen docentes con diferencias significativas."
+} else {
+  conclusion_Wilcox_test_DOCENTE <- paste("Los docentes con diferencias significativas son:", paste(significant_pairs_list, collapse = " ; "))
+}
+
+# conclusion_Wilcox_test_DOCENTE ahora es un string de longitud 1
+
+# Imprime la conclusión
+# conclusion_Wilcox_test_DOCENTE
+```
+
+<!-- TABLA RESULTADO TEST ANOVA DOCENTE: tabla_resultados_test_ANOVA_DOCENTE -->
+```{r,echo=FALSE}
+# Realiza el test de ANOVA
+ANOVA_DOCENTE <- aov(NOTA ~ DOCENTE, data = df2)
+
+# Extrae el resumen de los resultados
+summary_ANOVA_DOCENTE <- summary(ANOVA_DOCENTE)
+
+# Crea un dataframe con el resultado
+resultado_ANOVA_DOCENTE <- data.frame(
+  Test = "ANOVA",
+  Df = summary_ANOVA_DOCENTE[[1]]$Df[1],
+  Sum_Sq = round(summary_ANOVA_DOCENTE[[1]]$`Sum Sq`[1], 5),
+  Mean_Sq = round(summary_ANOVA_DOCENTE[[1]]$`Mean Sq`[1], 5),
+  F_value = round(summary_ANOVA_DOCENTE[[1]]$`F value`[1], 5),
+  p_valor = round(summary_ANOVA_DOCENTE[[1]]$`Pr(>F)`[1], 5)
+)
+
+# Crea la tabla y la guarda en 'tabla_ANOVA_SEDE'
+tabla_ANOVA_DOCENTE <- resultado_ANOVA_DOCENTE %>%
+  kable(align = c("l","c", "c", "c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(resultado_ANOVA_DOCENTE$p_valor < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_ANOVA_SEDE' para mostrar la tabla
+# tabla_ANOVA_DOCENTE
+```
+
+<!-- CONCLUSIÓN RESULTADO TEST ANOVA DOCENTE: conclusion_ANOVA_DOCENTE -->
+```{r,echo=FALSE}
+# Guarda el valor p en una variable
+p_value_ANOVA_DOCENTE <- resultado_ANOVA_DOCENTE$p_valor
+
+# Guarda el mensaje en la variable 'conclusion_ANOVA_SEDE'
+if (p_value_ANOVA_DOCENTE < 0.05) {
+  conclusion_ANOVA_DOCENTE <- "Los rendimientos entre los docnetes son diferentes."
+} else {
+  conclusion_ANOVA_DOCENTE <- "Los rendimientos entre los docentes son parecidos."
+}
+
+# Ahora puedes llamar a 'conclusion_ANOVA_SEDE' para mostrar el mensaje
+# conclusion_ANOVA_DOCENTE
+```
+
+<!-- TABLA RESULTADO TEST TUKEY DOCENTE: tabla_tukey_DOCENTE -->
+```{r,echo=FALSE}
+# Realizando ANOVA primero
+resultado_anova_DOCENTE <- aov(NOTA ~ DOCENTE, data = df2)
+
+# Realizando el test de Tukey
+resultado_tukey_DOCENTE <- TukeyHSD(resultado_anova_DOCENTE)
+
+# Convertir los resultados en un dataframe
+df_resultado_tukey_DOCENTE <- data.frame(resultado_tukey_DOCENTE$DOCENTE)
+
+# Convertir los nombres de las filas en una columna "Comparacion"
+df_resultado_tukey_DOCENTE <- df_resultado_tukey_DOCENTE %>% 
+  tibble::rownames_to_column("Comparación")
+
+# Redondear solo las columnas numéricas a 5 decimales
+num_cols <- sapply(df_resultado_tukey_DOCENTE, is.numeric)
+df_resultado_tukey_DOCENTE[num_cols] <- round(df_resultado_tukey_DOCENTE[num_cols], 5)
+
+# Crear la tabla
+tabla_tukey_DOCENTE<- df_resultado_tukey_DOCENTE %>%
+  kable(align = c("l","c", "c", "c", "c"), escape = FALSE) %>% # Agrega escape = FALSE para permitir HTML
+  row_spec(which(df_resultado_tukey_DOCENTE$p.adj < 0.05), background = "red", color = "white") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive","center"))
+
+# Ahora puedes llamar a 'tabla_tukey_SEDE' para mostrar la tabla
+# tabla_tukey_DOCENTE
+```
+
+<!-- CONCLUSIÓN RESULTADO TEST TUKEY DOCENTE: conclusion_tukey_test_DOCENTE -->
+```{r,echo=FALSE}
+# Filtramos las filas donde el valor p ajustado es menor a 0.05
+pares_sedes_significativos_tukey_DOCENTE <- df_resultado_tukey_DOCENTE %>%
+  filter(p.adj < 0.05)
+
+# Verificamos si el dataframe está vacío
+if(nrow(pares_sedes_significativos_tukey_DOCENTE) == 0) {
+  conclusion_tukey_test_DOCENTE <- "No existen docentes con diferencias significativas en su rendimiento."
+} else {
+  conclusion_tukey_test_DOCENTE <- pares_sedes_significativos_tukey_DOCENTE
+}
+
+# Ahora puedes llamar a 'conclusion_tukey_test_SEDE' para mostrar el resultado
+# conclusion_tukey_test_DOCENTE
+```
+<!---------------------------- FIN: TEST DOCENTE ----------------------------->
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+<!--%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+<!-- =============================== INICIO INFORME ======================== -->
+
+# Introducción
+<div style="text-align: justify">
+  La Evaluación Nacional Transversal (ENT) se establece como un Mecanismo de Aseguramiento de la Calidad (MAC) integral, con el propósito fundamental de verificar la ecualización entre las diferentes sedes educativas en todo el país. Este mecanismo se apoya en la recopilación y análisis exhaustivo de datos obtenidos a través de una evaluación uniforme, aplicada a nivel nacional, centrada en asignaturas específicas seleccionadas de una carrera en particular.
+
+En el contexto de este esfuerzo, el presente informe se desarrolla con el objetivo de responder una serie de preguntas esenciales que permitirán una mejor comprensión de los resultados de la ENT y facilitarán la implementación de mejoras basadas en las conclusiones obtenidas. Las preguntas a abordar son las siguientes:
+
+* ¿Cómo se compara el rendimiento de los estudiantes de diferentes sedes en la Evaluación Nacional Transversal (ENT)?
+
+* ¿Existen diferencias significativas en los tópicos o preguntas evaluadas en la ENT entre las distintas sedes?
+
+* ¿Cómo varía el rendimiento de los estudiantes en la ENT en función del profesor que imparte la enseñanza?
+</div>
+
+
+## Periodo 2024-10
+### Antecedentes
+<div style="text-align: justify">
+<!-- *********************************************************************** -->
+La evaluación en cuestión se llevó a cabo en tres sedes, específicamente: Santiago, Concepción y Puerto Montt. El examen se aplicó a 4 secciones diferentes, distribuidas entre las distintas sedes. En la sede de Santiago, también conocida como Bellavista (BES), se aplicó la evaluación a dos sección, a cargo de los profesores Waldo Oyarzun y Anita Henriquez, mientras que en Concepción (TPC), la evaluación se aplicó a una sección a cargo de la profesora Patricia D'Americo y en Puerto Montt (PAP) la sección estuvo a cargo del profesor Carlos Vergara.
+</div>
+
+
+### El Instrumento
+<div style="text-align: justify">
+<!-- *********************************************************************** -->
+El instrumento de evaluación implementado consistió en una prueba presencial compuesta por 4 preguntas, diseñadas en colaboración por los docentes responsables. Las preguntas tenían puntajes asignados de 15 puntos por pregunta, sumando un total de 60 puntos. Se estableció un porcentaje de exigencia del 60% y todas las preguntas requerían respuestas de desarrollo.
+
+La Evaluación Nacional Transversal (ENT) se llevó a cabo los días 2, 3 y 5 de agosto de 2023 en las sedes TPC, BES y PAP respectivamente. La prueba fue administrada en las diferentes secciones en los horarios habituales correspondientes por los docentes encargados, y se proporcionaron 100 minutos para su finalización. Los resultados de aprendizaje evaluados abarcan la siguiente unidad:
+
+<b> `r Unidad`  </b>
+
+`r Objetivo_unidad`.
+
+Los temas específicos cubiertos en la evaluación incluyeron:
+
+1.  `r Pregunta_1`.
+
+2.  `r Pregunta_2`.
+
+3.  `r Pregunta_3`.
+
+
+</div>
+
+
+### Participación
+<div style="text-align: justify">
+A continuación, se presenta un resumen de la participación de los estudiantes que rindieron la evaluación a nivel nacional, distribuidos por sede. Este análisis nos permitirá entender mejor las diferencias en la participación entre las distintas sedes, lo cual es fundamental para entender y mejorar la ecualización de la enseñanza en la Universidad San Sebastián.
+
+<!-- *********************************************************************** -->
+El análisis de participación en la ENT para la asignatura de `r Asignatura`, presenta que la sede con mayor asistencia fue `r df_ordenado_asistencia$SEDE[1]`, seguida de  `r df_ordenado_asistencia$SEDE[2]`.
+
+El gráfico se presenta a continuación.
+`r graf_asistencia$grafico`
+</div>
+
+
+### Distribución de los estudiantes
+<div style="text-align: justify">
+La siguiente gráfica de torta presenta la representatividad de los estudiantes que rindieron la evaluación para la asignatura de `r Asignatura` en cada sede.
+
+La sede con mayor representatividad es `r grafico_pie$df_ordenado$SEDE[1]` con `r grafico_pie$df_ordenado$Total[1]` estudiantes que corresponden al `r grafico_pie$df_ordenado$Porcentaje[1]`%, seguida por `r grafico_pie$df_ordenado$SEDE[2]` con `r grafico_pie$df_ordenado$Total[2]` estudiantes que corresponden al `r grafico_pie$df_ordenado$Porcentaje[2]`%.
+
+ <!-- *********************************************************************** otras sedes --> 
+<!-- , `r grafico_pie$df_ordenado$SEDE[3]` con `r grafico_pie$df_ordenado$Total[3]` estudiantes que corresponden al `r grafico_pie$df_ordenado$Porcentaje[3]`%.-->
+
+Estos datos son importantes para entender el alcance de la evaluación en cada sede y pueden ser útiles para determinar dónde se pueden necesitar recursos o atención adicionales.
+
+`r grafico_pie$grafico``
+</div>
+
+### Rendimiento de estudiantes
+<div style="text-align: justify">
+En esta sección se analiza el rendimiento de los estudiantes de la asignatura de `r Asignatura` en dos dimensiones: la nota obtenida y los puntajes logrados.
+</div>
+
+#### Densidad de notas
+<div style="text-align: justify">
+Esta subsección presenta el análisis gráfico de las densidades de frecuencias de las notas obtenidas por los estudiantes en la asignatura de `r Asignatura` a nivel nacional y por sede.
+</div>
+
+
+##### Densidad nacional
+<div style="text-align: justify">
+En esta gráfica se puede apreciar la distribución de notas obtenidas a nivel nacional por los estudiantes en la asignatura de `r Asignatura`.
+
+En las próximas secciones se realizará un análisis por sede y por profesor para entender mejor este comportamiento.
+
+
+`r graf_densidad_nacional_total`
+</div>
+
+##### Densidad por sede
+<div style="text-align: justify">
+En esta sección, se presenta el análisis de la densidad de las notas por sede para la asignatura de `r Asignatura`.
+
+El objetivo es observar el comportamiento de las concentraciones de notas en cada sede.
+
+`r graf_densidad_nacional_SEDE`
+</div>
+
+#### Promedio de notas Nacional 
+<div style="text-align: justify">
+A continuación se presenta el análisis gráfico de los promedios de las notas obtenidas por los estudiantes en la asignatura de `r Asignatura` por sede y profesor.
+</div>
+
+
+##### Promedio sedes
+
+<div style="text-align: justify">
+En esta sección, se presenta el análisis del promedio de notas obtenido por los estudiantes para cada sede de la asignatura de `r Asignatura`.
+
+Se observa que la sede con el promedio más alto es `r df_prom_nacional_ordenados$SEDE[1]` con un `r df_prom_nacional_ordenados$Nota[1]`, seguida por `r df_prom_nacional_ordenados$SEDE[2]` con un `r df_prom_nacional_ordenados$Nota[2]`.
+
+<!-- *********************************************************************** más sedes-->
+
+<!-- y `r df_prom_nacional_ordenados$SEDE[3]` con un `r df_prom_nacional_ordenados$Nota[3]`.-->
+
+
+`r graf_prom_nacional`
+</div>
+
+##### Densidad por carrera
+
+<div style="text-align: justify">
+
+En esta sección, se presenta el análisis de la densidad de las notas por carrera para la asignatura de `r Asignatura`.
+
+El objetivo es observar el comportamiento de las concentraciones de notas por carrera.
+
+`r graf_densidad_nacional_Carrera`
+</div>
+
+
+
+##### Análisis de Carrera en cada Sede con respecto a densidad de notas y promedios por sede
+ 
+
+<div style="text-align: justify">
+
+En esta sección, se presenta el análisis de la densidad de las notas por carrera para la asignatura de `r Asignatura` y discretizado por cada sede.
+
+El objetivo es observar el comportamiento de las concentraciones de notas por carrera y Sede.
+
+</div>
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# Supongamos que tu lista de gráficos ya está en la memoria
+# Aquí, 'graficos' es la lista que contiene tus gráficos, con el nombre de cada carrera como clave
+
+library(htmltools)
+
+# Mostrar los gráficos en un bucle
+for (carrera in names(graficos_Prom)) {
+  # Densidad por carrera y sedes
+  cat(paste0("\n\n####### ", carrera, "\n\n"))
+  tagList(graficos_Den[[carrera]]) %>% print()
+  
+  # Promedio por carrera y sedes
+  
+  # Densidad por carrera y sedes
+  #cat(paste0("\n\n####### ", carrera, "\n\n"))
+  tagList(graficos_Prom[[carrera]]) %>% print()
+  
+  
+  # Texto por carrera y sedes
+  
+  
+}
+```
+
+
+
+</div>
+
+#### Puntajes
+<div style="text-align: justify">
+Esta subsección presenta el análisis gráfico de los puntajes obtenidos en cada pregunta por los estudiantes en la asignatura de `r Asignatura` por sede y profesor.
+
+El análisis de rendimiento de los estudiantes se realiza a partir de 4 componentes fundamentales: 
+
+* Puntaje obtenido en la pregunta 1: `r Pregunta_1`
+
+* Puntaje obtenido en la pregunta 2: `r Pregunta_2`
+
+* Puntaje obtenido en la pregunta 3: `r Pregunta_3`
+
+
+Cada uno de estos componentes se promedia por sede y docente.
+</div>
+
+##### Puntajes por sede
+<div style="text-align: justify">
+
+En la Pregunta 1: `r Pregunta_1`, la sede que obtuvo el puntaje más alto fue `r grafico_puntaje_SEDE$df$SEDE[which.max(grafico_puntaje_SEDE$df$P1)]` con `r round(max(grafico_puntaje_SEDE$df$P1, na.rm = TRUE),1)` puntos, y el puntaje mínimo lo obtuvo la sede `r grafico_puntaje_SEDE$df$SEDE[which.min(grafico_puntaje_SEDE$df$P1)]` con `r round(min(grafico_puntaje_SEDE$df$P1, na.rm = TRUE),1)` puntos.
+
+En la Pregunta 2: `r Pregunta_2`, la sede que obtuvo el puntaje más alto fue `r grafico_puntaje_SEDE$df$SEDE[which.max(grafico_puntaje_SEDE$df$P2)]` con `r round(max(grafico_puntaje_SEDE$df$P2, na.rm = TRUE),1)` puntos, y el puntaje mínimo lo obtuvo la sede `r grafico_puntaje_SEDE$df$SEDE[which.min(grafico_puntaje_SEDE$df$P2)]` con `r round(min(grafico_puntaje_SEDE$df$P2, na.rm = TRUE),1)` puntos.
+
+En la Pregunta 3: `r Pregunta_3`, la sede que obtuvo el puntaje más alto fue `r grafico_puntaje_SEDE$df$SEDE[which.max(grafico_puntaje_SEDE$df$P3)]` con `r round(max(grafico_puntaje_SEDE$df$P3, na.rm = TRUE),1)` puntos, y el puntaje mínimo lo obtuvo la sede `r grafico_puntaje_SEDE$df$SEDE[which.min(grafico_puntaje_SEDE$df$P3)]` con `r round(min(grafico_puntaje_SEDE$df$P3, na.rm = TRUE),1)` puntos.
+
+En la Pregunta 4: `r Pregunta_4`, la sede que obtuvo el puntaje más alto fue `r grafico_puntaje_SEDE$df$SEDE[which.max(grafico_puntaje_SEDE$df$P4)]` con `r round(max(grafico_puntaje_SEDE$df$P4, na.rm = TRUE),1)` puntos, y el puntaje mínimo lo obtuvo la sede `r grafico_puntaje_SEDE$df$SEDE[which.min(grafico_puntaje_SEDE$df$P4)]` con `r round(min(grafico_puntaje_SEDE$df$P4, na.rm = TRUE),1)` puntos.
+
+`r grafico_puntaje_SEDE$grafico`
+</div>
+
+
+##### Puntajes por Carrera
+<div style="text-align: justify">
+A continuación se va a mostrar el rendimiento obtenido en cada pregunta por cada una de las carreras agrupados por sedes.
+
+El primer componente, <b>‘Puntaje obtenido en la pregunta 1: `r Pregunta_1`’</b>.
+
+
+<!-- Primer lazo de gráficos por carrera -->
+
+Para el segundo componente <b>‘Puntaje obtenido en la pregunta 2: `r Pregunta_2`’</b>.
+
+<!-- Segundo lazo de gráficos por carrera -->
+
+Al analizar el tercer componente <b>‘Puntaje obtenido en la pregunta 3: `r Pregunta_3`’</b>.
+
+<!-- Tercer lazo de gráficos por carrera -->
+
+Al analizar el cuarto componente <b>‘Puntaje obtenido en la pregunta 4: `r Pregunta_4`’</b>.
+
+<!-- Tercer lazo de gráficos por carrera -->
+
+<!-- *********************************************************************** -->
+
+Puntajes totales promedio por cada una de las carreras
+
+
+<!-- *********************************************************************** -->
+
+
+`r graf_puntajes_preguntas_Car`
+</div>
+
+### Análisis de resultados
+<div style="text-align: justify">
+El propósito de esta sección es examinar detenidamente los resultados obtenidos, aplicando una serie de pruebas estadísticas para extraer información significativa y establecer conclusiones sólidas. La estructura del análisis de resultados se dividirá en tres fases principales:
+
+1. <b>Normalidad:</b> Se realizará un test de Shapiro-Wilk. Esta prueba permitirá determinar si los datos siguen una distribución normal. Esta información es vital, ya que muchas técnicas de análisis estadístico asumen que los datos se distribuyen normalmente.
+
+
+2. <b>Homogeneidad de las varianzas:</b> Se examinará si las varianzas son homogéneas entre los datos. Esta prueba es esencial para asegurar que la variabilidad dentro de cada grupo de datos es aproximadamente la misma. Si las varianzas son significativamente diferentes, esto podría afectar a la interpretación de los resultados.
+
+3. <b>Test de independencia:</b> Finalmente, si bien la independencia es un aspecto crucial para considerar, ya que afecta a la validez de muchas pruebas estadísticas, esta se asumirá dada la naturaleza de los datos.
+
+Con el resultado de estas pruebas, se podrá tener una comprensión más profunda de los datos y estar mejor equipados para interpretar correctamente los hallazgos posteriores al análisis.
+
+<center>
+<img src = "Diagrama_para_analisis_6.jpg" alt="Resumen de análisis" >
+</center
+</div>
+
+
+#### Análisis por sede
+##### Exploratorio
+<div style="text-align: justify">
+Se presenta a continuación el promedio de notas por sede en la primera columna y, en la segunda las desviaciones estándar de las notas en cada sede.
+
+`r Tabla_resumen_SEDE`
+
+A continuación, se presenta la distribución de las notas por sede:
+
+`r ggplotly(box_SEDE)`
+</div>
+
+##### Test de Normalidad
+<div style="text-align: justify">
+Para el test de normalidad, se utilizó como \(H_0\) Las notas en cada sede siguen una distribución normal. Los resultados del test de Shapiro-Wilk, con un p-valor = 0.05,  se observan en la siguiente tabla.
+
+`r tabla_shapiro_SEDE`
+
+<div class="alert alert-info">
+
+<!-- *********************************************************************** las sedes -->
+Al revisar los p-valores, se concluye que: `r conclusion_normalidad_SEDE$BES`,  `r conclusion_normalidad_SEDE$TPC`, y `r conclusion_normalidad_SEDE$PAP`
+</div>
+
+##### Test de Varianzas
+<div style="text-align: justify">
+Para el test de Bartlett, se definió como \(H_0\) Las varianzas son parecidas entre las sedes, con un p-valor = 0.05. Los resultados se presentan en la siguiente tabla.
+
+`r tabla_bartlett_SEDE`
+
+<div class="alert alert-info">
+Al revisar el p-valor, se concluye que: `r conclusion_bartlett_SEDE`
+</div>
+
+##### Test Comparativo
+<!-- *********************************************************************** las sedes -->
+<div style="text-align: justify">
+Se realiza el test comparativo en función del la gráfica de pruebas comparativas. Donde se define como \(H_0\) No existen diferencias significativas entre las sedes con un p-valor = 0.05.
+
+`r tabla_kruskal_SEDE`
+
+<!-- `r tabla_ANOVA_SEDE`, `r tabla_kruskal_SEDE` --> 
+
+<div class="alert alert-info">
+Al revisar el p-valor, se concluye que: `r conclusion_Kruskal_SEDE` 
+
+<!-- `r conclusion_ANOVA_SEDE`, `r conclusion_Kruskal_SEDE` --> 
+</div>
+
+Para desarrollar el análisis post-hoc, se utilizó el test según criterio por pares de sedes, ajustando los p-valores con el método de Bonferroni para controlar el error Tipo I en cada comparación. Se definió como \(H_0\) No existen diferencias significativas en el rendimiento entre los pares de sedes, con un p-valor = 0.05.
+
+`r tabla_resultados_test_Wilcox_SEDE`
+
+
+
+<!-- `r tabla_tukey_SEDE`, `r tabla_resultados_test_Wilcox_SEDE` --> 
+
+<div class="alert alert-info">
+
+`r conclusion_Wilcox_test_SEDE`
+
+<!-- , `r conclusion_tukey_test_SEDE`,  `r conclusion_Wilcox_test_SEDE` --> 
+
+</div>
+</div>
+
+#### Análisis por docente
+##### Exploratorio
+<div style="text-align: justify">
+Se presenta el promedio de notas por docente en la primera columna y en la segunda, las desviaciones estándar de las notas en cada docente.
+
+`r Tabla_resumen_DOCENTE`
+
+A continuación, se presenta la distribución de las notas por docente:
+
+`r ggplotly(box_DOCENTE)`
+</div>
+
+##### Test de Normalidad
+<div style="text-align: justify">
+Para el test de normalidad, se utilizó como \(H_0\) Las notas en cada sección asociada al profesor siguen una distribución normal. Los resultados del test de Shapiro-Wilk, con un p-valor = 0.05,  se observan en la siguiente tabla.
+
+`r tabla_shapiro_DOCENTE`
+
+<div class="alert alert-info">
+<!-- *********************************************************************** DOCENTES -->
+
+Al revisar los p-valores, se concluye que los valores mayores a 0.05 se consideran cormales.
+</div>
+
+##### Test de Varianzas
+<div style="text-align: justify">
+Para el test de Bartlett, se definió como \(H_0\) Las varianzas son parecidas entre los docentes, con un p-valor = 0.05. Los resultados se presentan en la siguiente tabla.
+
+`r tabla_bartlett_DOCENTE`
+
+<div class="alert alert-info">
+Al revisar el p-valor, se concluye que: `r conclusion_bartlett_DOCENTE`
+</div>
+
+</div>
+
+##### Test Comparativo
+<!-- *********************************************************************** DOCENTES -->
+Para el test comparativo se recomienda realizar un test acorde al diagrama propuesto. Donde se define como \(H_0\) No existen diferencias significativas entre las docentes con un p-valor = 0.05.
+
+`r tabla_kruskal_DOCENTE`
+
+<div class="alert alert-info">
+Al revisar el p-valor, se concluye que: `r conclusion_Kruskal_DOCENTE`
+</div>
+
+Para desarrollar el análisis post-hoc, se utilizó el test acorde a la tabla por pares de docentes, ajustando los p-valores con el método de Bonferroni para controlar el error Tipo I en cada comparación. Se definió como \(H_0\) No existen diferencias significativas en el rendimiento entre los pares de docentes, con un p-valor = 0.05.
+
+`r tabla_resultados_test_Wilcox_DOCENTE`
+
+
+<!-- `r tabla_tukey_DOCENTE`, `r tabla_resultados_test_Wilcox_DOCENTE` --> 
+
+
+<div class="alert alert-info">
+`r conclusion_Wilcox_test_DOCENTE`
+
+
+</div>
+</div>
+
+</div>
+
+<!-- ### Feedback profesores -->
+<!-- <div style="text-align: justify"> -->
+
+<!-- </div> -->
+
+### Conclusiones
+<div style="text-align: justify">
+<!-- *********************************************************************** DOCENTES -->
+
+Notamos una falta de normalidad en los resultados, con la mayoría de las notas centrandose entre 2 y 3 puntos.
+
+A nivel nacional, el rendmiento fue bastante bajo encontrandose en todas las secciones el 75% de los estudiantes por debajo del 4, es decir se presenta una aprobación de entorno del 25%, con la sede de Santiago presentando el rendimiento más bajo. la pregunta que fue mejor desarrollada por los estudiantes fue `r Pregunta_4` y la menos desarrollada fue la `r Pregunta_1`. 
+
+El análisis de test comparativo arrojó que no existían diferencias significativas entre las sedes, corroborando los resultados con el análisis post-hoc.
+
+
+</div>
+
+
+
+
